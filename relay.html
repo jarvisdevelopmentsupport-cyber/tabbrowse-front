@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="TaskFlow Relay — Scramjet-powered proxy browser">
+<meta name="theme-color" content="#0b0b12">
+<title>TaskFlow Relay</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@300,400,500,700&display=swap" rel="stylesheet">
+<style>
+/* ================================================================
+   TaskFlow Relay — proxy browser UI
+   TaskFlow identity: dark void, purple primary, glass surfaces.
+   Jarvis-inspired: aurora background, particles, grain, glow.
+   ================================================================ */
+:root {
+  --void: #0b0b12;
+  --surface: #151522;
+  --surface-2: #1c1c2e;
+  --glass: rgba(21, 21, 34, 0.72);
+  --line: rgba(147, 51, 234, 0.22);
+  --line-strong: rgba(147, 51, 234, 0.45);
+  --primary: #9333ea;
+  --primary-bright: #d8b4fe;
+  --accent: #22d3ee;
+  --text: #f8fafc;
+  --muted: #8b8fa8;
+  --danger: #f43f5e;
+  --ok: #10b981;
+  --grad: linear-gradient(100deg, var(--accent), var(--primary) 45%, #f0abfc 75%);
+  --sans: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --display: 'Clash Display', 'Satoshi', system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--sans); }
+
+html, body { height: 100%; }
+body {
+  background: var(--void);
+  color: var(--text);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ---------- animated background ---------- */
+#aurora { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+#aurora .blob {
+  position: absolute; border-radius: 50%; filter: blur(90px); opacity: .35;
+  will-change: transform;
+}
+#aurora .b1 { width: 55vmax; height: 55vmax; top: -25vmax; left: -15vmax;
+  background: radial-gradient(circle, rgba(147,51,234,.55), transparent 65%);
+  animation: drift1 26s ease-in-out infinite; }
+#aurora .b2 { width: 45vmax; height: 45vmax; bottom: -20vmax; right: -10vmax;
+  background: radial-gradient(circle, rgba(34,211,238,.35), transparent 65%);
+  animation: drift2 32s ease-in-out infinite; }
+#aurora .b3 { width: 40vmax; height: 40vmax; top: 55%; left: 45%;
+  background: radial-gradient(circle, rgba(240,171,252,.28), transparent 65%);
+  animation: drift3 38s ease-in-out infinite; }
+@keyframes drift1 { 50% { transform: translate(12vw, 10vh) scale(1.12); } }
+@keyframes drift2 { 50% { transform: translate(-10vw, -8vh) scale(1.08); } }
+@keyframes drift3 { 50% { transform: translate(-14vw, 6vh) scale(.9); } }
+#particles { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.grain { position: fixed; top: -50%; left: -50%; width: 200%; height: 200%; z-index: 3;
+  pointer-events: none; opacity: .045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  animation: grain .9s steps(6) infinite; }
+@keyframes grain {
+  0% { transform: translate(0,0); } 17% { transform: translate(-2%,1.5%); }
+  33% { transform: translate(1.5%,-2%); } 50% { transform: translate(-1%,2%); }
+  67% { transform: translate(2%,1%); } 83% { transform: translate(-1.5%,-1%); }
+  100% { transform: translate(0,0); } }
+.vignette { position: fixed; inset: 0; z-index: 2; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(4,4,10,.8) 100%); }
+
+/* ---------- top progress bar ---------- */
+#pagebar { position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 60;
+  background: var(--grad); background-size: 200% 100%;
+  animation: hueslide 4s linear infinite;
+  box-shadow: 0 0 14px rgba(147,51,234,.8), 0 0 30px rgba(34,211,238,.4);
+  transition: width .35s var(--ease), opacity .3s; opacity: 0; }
+@keyframes hueslide { to { background-position: 200% 0; } }
+
+/* ---------- app shell ---------- */
+#app { position: relative; z-index: 5; height: 100%; display: flex; flex-direction: column; }
+
+/* ---------- chrome bar ---------- */
+#chrome {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .7rem 1rem;
+  background: var(--glass);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 44px -14px rgba(147,51,234,.25);
+  flex: none;
+}
+.brand { display: flex; align-items: center; gap: .55rem; text-decoration: none; margin-right: .4rem; }
+.brand .mark { width: 1.9rem; height: 1.9rem; border-radius: 50%; flex: none; position: relative;
+  background: radial-gradient(circle, #fff 0 16%, var(--primary) 17% 40%, transparent 42%),
+    conic-gradient(from 0deg, var(--primary), var(--accent), #f0abfc, var(--primary));
+  box-shadow: 0 0 18px rgba(147,51,234,.8); animation: spin 8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.brand .name { font: 700 1.05rem var(--display); letter-spacing: .04em; color: var(--text);
+  background: var(--grad); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: hueslide 6s linear infinite; }
+.brand .tag { font-size: .6rem; color: var(--muted); letter-spacing: .18em; text-transform: uppercase; }
+
+.navbtns { display: flex; gap: .3rem; }
+.icon-btn {
+  width: 2.5rem; height: 2.5rem; border-radius: 10px; border: 1px solid transparent;
+  background: rgba(255,255,255,.04); color: var(--muted); cursor: pointer;
+  display: grid; place-items: center; font-size: 1.05rem; line-height: 1;
+  transition: all .22s var(--ease);
+}
+.icon-btn:hover { background: rgba(147,51,234,.14); color: var(--text);
+  border-color: var(--line-strong); box-shadow: 0 0 18px -4px rgba(147,51,234,.5); }
+.icon-btn:active { transform: scale(.94); }
+.icon-btn:disabled { opacity: .35; cursor: default; box-shadow: none; }
+.icon-btn svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* address bar */
+#addr-wrap { flex: 1; display: flex; align-items: center; gap: .5rem;
+  background: rgba(11,11,18,.6); border: 1px solid var(--line); border-radius: 12px;
+  padding: 0 .8rem; transition: all .25s var(--ease); min-width: 0; }
+#addr-wrap:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(147,51,234,.18), 0 0 24px -6px rgba(147,51,234,.5); }
+#addr-lock { color: var(--muted); flex: none; display: grid; place-items: center; }
+#addr-lock svg { width: .95rem; height: .95rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+#address { flex: 1; background: transparent; border: none; outline: none; color: var(--text);
+  font-size: .95rem; padding: .62rem 0; min-width: 0; }
+#address::placeholder { color: var(--muted); }
+#addr-spinner { flex: none; width: 1rem; height: 1rem; border-radius: 50%;
+  border: 2px solid rgba(147,51,234,.3); border-top-color: var(--primary-bright);
+  animation: rot .7s linear infinite; display: none; }
+#addr-spinner.on { display: block; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+#go-btn {
+  padding: .6rem 1.15rem; border-radius: 11px; border: none; cursor: pointer;
+  font: 700 .9rem var(--sans); color: #fff;
+  background: linear-gradient(110deg, var(--primary), #7e22ce);
+  transition: all .22s var(--ease);
+}
+#go-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 28px -6px rgba(147,51,234,.8); }
+#go-btn:active { transform: translateY(0); }
+
+/* status + secondary buttons */
+#status-dot { display: flex; align-items: center; gap: .45rem; padding: .45rem .8rem;
+  border-radius: 99px; border: 1px solid var(--line); background: rgba(255,255,255,.03);
+  color: var(--muted); font: 600 .72rem var(--mono); letter-spacing: .06em; cursor: pointer;
+  transition: all .22s var(--ease); flex: none; }
+#status-dot:hover { border-color: var(--line-strong); color: var(--text); }
+#status-dot .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--muted); }
+#status-dot.ok .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: pulse 2s infinite; }
+#status-dot.waking .dot { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; animation: pulse 1s infinite; }
+#status-dot.down .dot { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+@keyframes pulse { 50% { opacity: .45; } }
+
+/* ---------- viewport ---------- */
+#viewport-wrap { flex: 1; position: relative; min-height: 0; background: #0d0d15; }
+#viewport { width: 100%; height: 100%; border: none; background: #fff; display: block; }
+
+/* home overlay */
+#home {
+  position: absolute; inset: 0; z-index: 10; overflow-y: auto;
+  background:
+    radial-gradient(700px 340px at 50% -10%, rgba(147,51,234,.16), transparent 70%),
+    var(--void);
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity .4s var(--ease);
+}
+#home.hidden { opacity: 0; pointer-events: none; }
+.home-card { width: min(640px, 92%); text-align: center; padding: 2rem 0 3rem; }
+.home-eyebrow { display: inline-flex; align-items: center; gap: .5rem;
+  font: 600 .72rem var(--mono); letter-spacing: .22em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid rgba(34,211,238,.35); border-radius: 99px;
+  padding: .35rem .9rem; margin-bottom: 1.4rem; background: rgba(34,211,238,.05);
+  box-shadow: 0 0 24px -8px rgba(34,211,238,.5); }
+.home-eyebrow::before { content: ""; width: .42rem; height: .42rem; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 1.6s infinite; }
+#home h1 { font: 700 clamp(1.9rem, 5vw, 2.8rem) var(--display); letter-spacing: -.02em; margin-bottom: .7rem; }
+#home h1 span { background: var(--grad); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: hueslide 7s linear infinite; }
+#home .sub { color: var(--muted); font-size: .95rem; margin-bottom: 2rem; }
+
+.home-search { display: flex; gap: .6rem; margin-bottom: 2.4rem; }
+.home-search input {
+  flex: 1; background: rgba(21,21,34,.8); border: 1px solid var(--line); border-radius: 12px;
+  padding: .85rem 1.1rem; color: var(--text); font-size: 1rem; outline: none;
+  transition: all .25s var(--ease); backdrop-filter: blur(8px);
+}
+.home-search input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(147,51,234,.18); }
+.home-search input::placeholder { color: var(--muted); }
+
+.quick-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; }
+.qlink {
+  display: flex; align-items: center; gap: .7rem; padding: .9rem 1rem; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), transparent 30%), var(--glass);
+  border: 1px solid var(--line); color: var(--text); text-decoration: none; cursor: pointer;
+  font-weight: 600; font-size: .92rem; text-align: left;
+  transition: all .3s var(--ease); backdrop-filter: blur(10px);
+}
+.qlink:hover { border-color: var(--line-strong); transform: translateY(-3px);
+  box-shadow: 0 18px 44px -18px rgba(147,51,234,.6); }
+.qlink .ico { width: 2.1rem; height: 2.1rem; border-radius: 10px; flex: none;
+  display: grid; place-items: center; font-size: .78rem; font-weight: 800; letter-spacing: .03em;
+  background: linear-gradient(135deg, rgba(147,51,234,.35), rgba(34,211,238,.2));
+  border: 1px solid var(--line); color: var(--primary-bright);
+  box-shadow: 0 0 20px -6px rgba(147,51,234,.6); }
+.qlink small { display: block; color: var(--muted); font-weight: 400; font-size: .72rem; }
+
+/* ---------- boot / error screens ---------- */
+#boot { position: fixed; inset: 0; z-index: 100; background: var(--void);
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1.6rem;
+  transition: opacity .5s var(--ease); }
+#boot.hidden { opacity: 0; pointer-events: none; }
+.orb { position: relative; width: 92px; height: 92px; }
+.orb .ring { position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: var(--primary); border-right-color: rgba(147,51,234,.3);
+  animation: rot 1.1s linear infinite; }
+.orb .ring.r2 { inset: 10px; border-top-color: var(--accent); animation-duration: 1.7s; animation-direction: reverse; }
+.orb .core { position: absolute; inset: 30px; border-radius: 50%;
+  background: radial-gradient(circle, var(--primary-bright), var(--primary) 70%);
+  box-shadow: 0 0 34px rgba(147,51,234,.9), 0 0 70px rgba(147,51,234,.4);
+  animation: corepulse 1.8s ease-in-out infinite; }
+@keyframes corepulse { 50% { transform: scale(.78); opacity: .75; } }
+#boot h2 { font: 700 1.5rem var(--display); letter-spacing: -.01em; }
+#boot .msg { color: var(--muted); font-size: .9rem; max-width: 34rem; text-align: center; line-height: 1.65; padding: 0 1.2rem; }
+#boot .msg strong { color: var(--text); }
+#boot .status { font: 600 .78rem var(--mono); color: var(--accent); letter-spacing: .08em; }
+#boot .err { display: none; flex-direction: column; align-items: center; gap: 1rem; }
+#boot.error .orb, #boot.error h2, #boot.error .msg, #boot.error .status { display: none; }
+#boot.error .err { display: flex; }
+#boot .err h3 { color: var(--danger); font-family: var(--display); }
+#boot .err p { color: var(--muted); font-size: .88rem; max-width: 32rem; text-align: center; word-break: break-word; }
+.btn { padding: .75rem 1.5rem; border-radius: 11px; border: none; cursor: pointer;
+  font: 700 .9rem var(--sans); color: #fff;
+  background: linear-gradient(110deg, var(--primary), #7e22ce);
+  transition: all .22s var(--ease); }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 10px 34px -8px rgba(147,51,234,.9); }
+.btn.ghost { background: rgba(255,255,255,.05); border: 1px solid var(--line-strong); }
+
+/* toast */
+#toast { position: fixed; bottom: 1.2rem; left: 50%; transform: translate(-50%, 20px);
+  background: var(--glass); border: 1px solid var(--line-strong); border-radius: 12px;
+  padding: .8rem 1.2rem; font-size: .88rem; color: var(--text); z-index: 200;
+  opacity: 0; pointer-events: none; transition: all .35s var(--ease);
+  backdrop-filter: blur(14px); max-width: min(90vw, 480px); }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast.err { border-color: rgba(244,63,94,.5); box-shadow: 0 0 30px -8px rgba(244,63,94,.5); }
+
+@media (max-width: 720px) {
+  .quick-links { grid-template-columns: 1fr 1fr; }
+  .brand .tag, #status-dot .label { display: none; }
+  #chrome { flex-wrap: wrap; }
+  #addr-wrap { order: 5; width: 100%; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="aurora"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<canvas id="particles"></canvas>
+<div class="grain"></div>
+<div class="vignette"></div>
+<div id="pagebar"></div>
+
+<div id="app">
+  <div id="chrome">
+    <a class="brand" href="#" id="brand-home" title="TaskFlow Relay home">
+      <span class="mark"></span>
+      <span class="name">TaskFlow</span>
+      <span class="tag">Relay</span>
+    </a>
+    <div class="navbtns">
+      <button class="icon-btn" id="btn-back" title="Back (Alt+←)">
+        <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-forward" title="Forward (Alt+→)">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-reload" title="Reload">
+        <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-home" title="Home">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h5v-6h4v6h5V9.5"/></svg>
+      </button>
+    </div>
+    <div id="addr-wrap">
+      <span id="addr-lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+      <input id="address" type="text" placeholder="Search or enter address" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span id="addr-spinner"></span>
+    </div>
+    <button id="go-btn" title="Go">Go</button>
+    <button id="status-dot" class="waking" title="Backend status — click to re-check">
+      <span class="dot"></span><span class="label" id="status-label">WAKING</span>
+    </button>
+    <div class="navbtns">
+      <button class="icon-btn" id="btn-full" title="Fullscreen">
+        <svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-exit" title="Exit relay">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="viewport-wrap">
+    <iframe id="viewport" allow="fullscreen; autoplay; clipboard-read; clipboard-write; encrypted-media" referrerpolicy="no-referrer-when-downgrade"></iframe>
+
+    <div id="home">
+      <div class="home-card">
+        <p class="home-eyebrow">Scramjet proxy browser</p>
+        <h1><span>Relay</span> — browse freely</h1>
+        <p class="sub">Enter an address above, or start from one of these quick links. Traffic is routed through your TaskFlow Relay backend.</p>
+        <form class="home-search" id="home-search">
+          <input type="text" id="home-input" placeholder="Search or enter address" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <button class="btn" type="submit">Go</button>
+        </form>
+        <div class="quick-links" id="quick-links">
+          <button class="qlink" data-url="https://en.wikipedia.org/wiki/Main_Page"><span class="ico">W</span><span>Wikipedia<small>The free encyclopedia</small></span></button>
+          <button class="qlink" data-url="https://duckduckgo.com"><span class="ico">D</span><span>DuckDuckGo<small>Private search</small></span></button>
+          <button class="qlink" data-url="https://www.reddit.com"><span class="ico">R</span><span>Reddit<small>The front page</small></span></button>
+          <button class="qlink" data-url="https://github.com"><span class="ico">G</span><span>GitHub<small>Code hosting</small></span></button>
+          <button class="qlink" data-url="https://news.ycombinator.com"><span class="ico">Y</span><span>Hacker News<small>Tech news</small></span></button>
+          <button class="qlink" data-url="https://www.youtube.com"><span class="ico">Yt</span><span>YouTube<small>Video sharing</small></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- boot / error screen -->
+<div id="boot">
+  <div class="orb"><div class="ring"></div><div class="ring r2"></div><div class="core"></div></div>
+  <h2>Initializing TaskFlow Relay</h2>
+  <p class="msg">The proxy backend is waking up. Since we're using Render's free tier, initial startup can take up to approximately one minute. Please wait.</p>
+  <p class="status" id="boot-status">Contacting backend…</p>
+  <div class="err">
+    <h3>Relay failed to start</h3>
+    <p id="boot-error"></p>
+    <div style="display:flex;gap:.7rem">
+      <button class="btn" id="boot-retry">Try again</button>
+      <button class="btn ghost" id="boot-details">Show details</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="config.js"></script>
+<script>
+/* =====================================================================
+   TaskFlow Relay — proxy browser bootstrap
+   =====================================================================
+   Loads the official Scramjet bundles from the TaskFlow Relay backend,
+   registers the service worker, initializes the controller + libcurl
+   (wisp) transport, and wires the browser UI to a real proxy frame.
+   ===================================================================== */
+(function () {
+  "use strict";
+
+  /* ---------- shared helpers ---------- */
+  const BACKEND = String(window.TASKFLOW_BACKEND || "").replace(/\/+$/, "");
+  if (!BACKEND || !/^https?:\/\//.test(BACKEND)) {
+    return bootFail('config.js is not configured yet. Open config.js and set TASKFLOW_BACKEND to your Render backend URL (for example "https://taskflow-relay-backend.onrender.com").');
+  }
+  const backendURL = new URL(BACKEND);
+  const WISP_URL = (backendURL.protocol === "https:" ? "wss://" : "ws://") + backendURL.host + "/";
+
+  const $ = (id) => document.getElementById(id);
+  const boot = $("boot"), bootStatus = $("boot-status"), bootErr = $("boot-error");
+  const address = $("address"), spinner = $("addr-spinner"), pagebar = $("pagebar");
+  const statusDot = $("status-dot"), statusLabel = $("status-label");
+  const homeOverlay = $("home"), viewport = $("viewport");
+  const toast = $("toast");
+
+  let lastBootError = null;
+  let toastTimer = null;
+  function showToast(msg, isError) {
+    toast.textContent = msg;
+    toast.classList.toggle("err", !!isError);
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 4000);
+  }
+  function bootFail(message, err) {
+    lastBootError = err ? (err && err.stack ? err.stack : String(err)) : message;
+    bootErr.textContent = message;
+    boot.classList.add("error");
+  }
+  $("boot-retry").addEventListener("click", () => location.reload());
+  $("boot-details").addEventListener("click", () => {
+    bootErr.textContent = lastBootError || "No details available.";
+  });
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = false;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Failed to load " + src));
+      document.head.appendChild(s);
+    });
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /* ---------- backend health ---------- */
+  async function checkHealth() {
+    try {
+      const res = await fetch(BACKEND + "/health", { cache: "no-store" });
+      if (!res.ok) return false;
+      const j = await res.json();
+      return !!j.ok;
+    } catch { return false; }
+  }
+
+  async function waitForBackend(timeoutMs, onStatus) {
+    const started = Date.now();
+    let attempt = 0;
+    while (Date.now() - started < timeoutMs) {
+      attempt++;
+      if (onStatus) onStatus(attempt, Date.now() - started);
+      if (await checkHealth()) return true;
+      await sleep(3000);
+    }
+    return false;
+  }
+
+  function setBackendStatus(state) {
+    statusDot.className = state;
+    statusLabel.textContent = state === "ok" ? "ONLINE" : state === "waking" ? "WAKING" : "OFFLINE";
+  }
+
+  /* ---------- UI state ---------- */
+  let frame = null;          // Scramjet Frame
+  let controller = null;     // Scramjet Controller
+  let booted = false;
+  let addrSyncTimer = null;
+
+  function setPageLoading(on) {
+    spinner.classList.toggle("on", on);
+    pagebar.style.opacity = on ? "1" : "0";
+    pagebar.style.width = on ? "70%" : "100%";
+    if (!on) { pagebar.style.width = "0"; }
+  }
+
+  function showHome() {
+    homeOverlay.classList.remove("hidden");
+    viewport.style.visibility = "hidden";
+    address.value = "";
+    try { viewport.src = "about:blank"; } catch {}
+  }
+  function hideHome() {
+    homeOverlay.classList.add("hidden");
+    viewport.style.visibility = "visible";
+  }
+
+  /* ---------- URL input handling ---------- */
+  function normalizeInput(raw) {
+    const input = String(raw || "").trim();
+    if (!input) return null;
+
+    // Looks like a URL?
+    if (/^https?:\/\//i.test(input)) return input;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(input)) {
+      // non-http scheme (about:, chrome:, javascript: …) — not supported
+      return { error: "Only http:// and https:// addresses are supported." };
+    }
+    if (input.includes(" ")) return searchURL(input);
+    if (/^[\w-]+(\.[\w-]+)+(:\d+)?([/?#].*)?$/.test(input) || /^localhost(:\d+)?([/?#].*)?$/i.test(input)) {
+      return "https://" + input;
+    }
+    return searchURL(input);
+  }
+  function searchURL(q) {
+    return "https://duckduckgo.com/?q=" + encodeURIComponent(q);
+  }
+
+  function navigate(raw) {
+    if (!frame) { showToast("Relay is still starting up.", true); return; }
+    const target = normalizeInput(raw);
+    if (!target) return;
+    if (target && target.error) { showToast(target.error, true); return; }
+    hideHome();
+    setPageLoading(true);
+    frame.go(target);
+    address.blur();
+  }
+
+  /* ---------- address bar sync ---------- */
+  function currentFrameURL() {
+    try {
+      const href = viewport.contentWindow.location.href;
+      if (!href || href === "about:blank") return null;
+      const unw = window.$scramjet && window.$scramjet.unrewriteUrl
+        ? window.$scramjet.unrewriteUrl(href)
+        : null;
+      if (unw) return unw.href ? unw.href : String(unw);
+      // fallback: manual decode (prefix is /~/sj/<controller>/<frame>/)
+      const m = href.match(/\/~\/sj\/[^/]+\/[^/]+\/(.+)$/);
+      return m ? decodeURIComponent(m[1]) : href;
+    } catch { return null; }
+  }
+
+  function syncAddressBar() {
+    if (document.activeElement === address) return; // user is typing
+    if (!homeOverlay.classList.contains("hidden")) return;
+    const url = currentFrameURL();
+    if (url) address.value = url;
+  }
+
+  /* ---------- boot sequence ---------- */
+  async function boot_() {
+    bootStatus.textContent = "Contacting backend…";
+
+    // 1. Wait for the backend (handles Render free-tier cold start).
+    const healthy = await waitForBackend(180000, (attempt, elapsed) => {
+      const secs = Math.round(elapsed / 1000);
+      bootStatus.textContent = "Backend waking up… (attempt " + attempt + ", " + secs + "s elapsed)";
+    });
+    if (!healthy) {
+      return bootFail("The TaskFlow Relay backend did not respond within 3 minutes. It may still be waking up on the Render free tier — try again in a minute, or check the Render dashboard for crashes.");
+    }
+    setBackendStatus("ok");
+
+    // 2. Load the Scramjet runtime + controller API bundles.
+    bootStatus.textContent = "Loading Scramjet runtime…";
+    try {
+      await loadScript(BACKEND + "/scram/scramjet.js");            // sets globalThis.$scramjet
+      await loadScript(BACKEND + "/controller/controller.api.js");  // sets globalThis.$scramjetController
+    } catch (err) {
+      return bootFail("Could not load the Scramjet bundles from the backend. Check that the backend is deployed and that ALLOWED_ORIGINS includes this site's origin.", err);
+    }
+
+    // 3. Import the libcurl (wisp) transport module.
+    bootStatus.textContent = "Loading proxy transport…";
+    let LibcurlClient;
+    try {
+      const mod = await import(BACKEND + "/libcurl/index.mjs");
+      LibcurlClient = mod.default || mod.LibcurlClient;
+    } catch (err) {
+      return bootFail("Could not load the libcurl transport module from the backend.", err);
+    }
+
+    // 4. Register the service worker and wait for it to control this page.
+    if (!("serviceWorker" in navigator)) {
+      return bootFail("This browser does not support service workers, which TaskFlow Relay requires. Use a recent version of Chrome, Edge, Firefox or Safari over HTTPS.");
+    }
+    bootStatus.textContent = "Registering service worker…";
+    try {
+      await navigator.serviceWorker.register("sw.js", { scope: "/", updateViaCache: "none" });
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) {
+        await new Promise((resolve, reject) => {
+          const onChange = () => navigator.serviceWorker.controller ? resolve() : undefined;
+          navigator.serviceWorker.addEventListener("controllerchange", onChange, { once: true });
+          setTimeout(() => navigator.serviceWorker.controller ? resolve() : reject(new Error("timeout")), 15000);
+        });
+      }
+    } catch (err) {
+      return bootFail("Service worker registration failed. Make sure this page is served over HTTPS from the site root (relay.html and sw.js must sit next to each other).", err);
+    }
+
+    // 5. Initialize the transport and the Scramjet controller.
+    bootStatus.textContent = "Starting proxy engine…";
+    try {
+      const transport = new LibcurlClient({ wisp: WISP_URL });
+      await transport.init();
+
+      controller = new window.$scramjetController.Controller({
+        serviceworker: navigator.serviceWorker.controller,
+        transport: transport,
+        config: {
+          prefix: "/~/sj/",
+          scramjetPath: BACKEND + "/scram/scramjet.js",
+          injectPath: BACKEND + "/controller/controller.inject.js",
+          wasmPath: BACKEND + "/scram/scramjet.wasm",
+          virtualWasmPath: "scramjet.wasm.js"
+        }
+      });
+      await controller.wait();
+    } catch (err) {
+      return bootFail("The Scramjet controller failed to initialize. The backend and frontend versions may be mismatched — redeploy both from the same source.", err);
+    }
+
+    // 6. Create the proxy frame and wire the UI.
+    frame = controller.createFrame(viewport);
+    viewport.addEventListener("load", () => setPageLoading(false));
+
+    boot.classList.add("hidden");
+    booted = true;
+    setPageLoading(false);
+
+    // Address bar sync (cheap poll; pauses while the user types).
+    addrSyncTimer = setInterval(syncAddressBar, 700);
+
+    // Keepalive ping so the Render free tier doesn't sleep mid-session.
+    setInterval(() => {
+      fetch(BACKEND + "/health", { mode: "no-cors", keepalive: true }).catch(() => {});
+    }, 240000);
+
+    // Deep link: relay.html#<url> or relay.html?url=<encoded>
+    const deep =
+      new URLSearchParams(location.search).get("url") ||
+      (location.hash && location.hash.length > 1 ? location.hash.slice(1) : null);
+    if (deep) {
+      navigate(decodeURIComponent(deep));
+    } else {
+      showHome();
+    }
+  }
+
+  /* ---------- UI wiring (every control works) ---------- */
+  $("go-btn").addEventListener("click", () => navigate(address.value));
+  address.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); navigate(address.value); }
+    if (e.key === "Escape") address.blur();
+  });
+  $("home-search").addEventListener("submit", (e) => {
+    e.preventDefault();
+    navigate($("home-input").value);
+  });
+  $("btn-back").addEventListener("click", () => { try { frame && frame.back(); } catch {} });
+  $("btn-forward").addEventListener("click", () => { try { frame && frame.forward(); } catch {} });
+  $("btn-reload").addEventListener("click", () => {
+    if (!frame) return;
+    if (!homeOverlay.classList.contains("hidden")) { showToast("Nothing to reload yet."); return; }
+    setPageLoading(true);
+    try { frame.reload(); } catch {}
+  });
+  $("btn-home").addEventListener("click", showHome);
+  $("brand-home").addEventListener("click", (e) => { e.preventDefault(); showHome(); });
+
+  document.querySelectorAll("#quick-links .qlink").forEach((b) => {
+    b.addEventListener("click", () => navigate(b.dataset.url));
+  });
+
+  $("btn-full").addEventListener("click", async () => {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (err) {
+      showToast("Fullscreen was blocked: " + err.message, true);
+    }
+  });
+
+  $("btn-exit").addEventListener("click", () => {
+    try { window.top.close(); } catch {}
+    setTimeout(() => { try { location.replace("about:blank"); } catch {} }, 150);
+  });
+
+  statusDot.addEventListener("click", async () => {
+    setBackendStatus("waking");
+    const ok = await checkHealth();
+    setBackendStatus(ok ? "ok" : "down");
+    showToast(ok ? "Backend is online." : "Backend is unreachable.", !ok);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+      e.preventDefault(); address.focus(); address.select();
+    }
+    if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); try { frame && frame.back(); } catch {} }
+    if (e.altKey && e.key === "ArrowRight") { e.preventDefault(); try { frame && frame.forward(); } catch {} }
+  });
+
+  /* ---------- background particles (lightweight) ---------- */
+  (function particles() {
+    const canvas = $("particles");
+    const ctx = canvas.getContext("2d");
+    let W, H, pts = [];
+    function size() {
+      W = innerWidth; H = innerHeight;
+      canvas.width = W; canvas.height = H;
+      const n = Math.min(60, Math.round(W / 26));
+      pts = [];
+      for (let i = 0; i < n; i++) {
+        pts.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3 });
+      }
+    }
+    function draw() {
+      if (document.hidden) { requestAnimationFrame(draw); return; }
+      ctx.clearRect(0, 0, W, H);
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > W) p.vx *= -1;
+        if (p.y < 0 || p.y > H) p.vy *= -1;
+        ctx.fillStyle = "rgba(216,180,254,.5)";
+        ctx.fillRect(p.x, p.y, 1.6, 1.6);
+        for (let j = i + 1; j < pts.length; j++) {
+          const q = pts[j], dx = p.x - q.x, dy = p.y - q.y, d = dx * dx + dy * dy;
+          if (d < 18000) {
+            ctx.strokeStyle = "rgba(147,51,234," + (0.14 * (1 - d / 18000)) + ")";
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+          }
+        }
+      }
+      requestAnimationFrame(draw);
+    }
+    size();
+    addEventListener("resize", size);
+    requestAnimationFrame(draw);
+  })();
+
+  /* ---------- go ---------- */
+  boot_().catch((err) => bootFail("Unexpected error while starting the relay.", err));
+})();
+</script>
+</body>
+</html>
